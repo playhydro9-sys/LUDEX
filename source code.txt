@@ -1,0 +1,617 @@
+package com.example.ludex
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query as FirestoreQuery
+import com.google.firebase.Timestamp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+
+import retrofit2.http.GET
+import retrofit2.http.Path
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import coil.compose.AsyncImage
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Query
+
+// ========================================================
+// 
+// ========================================================
+const val RAWG_API_KEY = "NO API KEY YET" // 
+
+val LudexBackground = Color(0xFF0D0D0D)
+val LudexAccent = Color(0xFF1DBF8E)
+val LudexTextPrimary = Color(0xFFFAFAFA)
+val LudexTextSecondary = Color(0xFF8A8A8A)
+val LudexCardBg = Color(0xFF151515)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { AppRoot() }
+    }
+}
+
+@Composable
+fun AppRoot() {
+    val auth = FirebaseAuth.getInstance()
+    var currentScreen by remember { mutableStateOf(if (auth.currentUser != null) "home" else "login") }
+
+    when (currentScreen) {
+        "login" -> LoginScreen(onLoginSuccess = { currentScreen = "home" }, onNavigateToRegister = { currentScreen = "register" })
+        "register" -> RegisterScreen(onRegisterSuccess = { currentScreen = "home" }, onNavigateToLogin = { currentScreen = "login" })
+        "home" -> HomeScreen()
+    }
+}
+
+@Composable
+fun LoginScreen(onLoginSuccess: () -> Unit, onNavigateToRegister: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val auth = FirebaseAuth.getInstance()
+
+    Box(modifier = Modifier.fillMaxSize().background(LudexBackground).padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text("LUDEX", color = LudexAccent, fontSize = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("سجّل دخولك وابدأ توثيق رحلتك مع الألعاب", color = LudexTextSecondary, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(40.dp))
+
+            OutlinedTextField(
+                value = email, onValueChange = { email = it }, label = { Text("البريد الإلكتروني", color = LudexTextSecondary) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary, unfocusedTextColor = LudexTextPrimary)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = password, onValueChange = { password = it }, label = { Text("كلمة المرور", color = LudexTextSecondary) },
+                singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary, unfocusedTextColor = LudexTextPrimary)
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Button(
+                onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        Toast.makeText(context, "الرجاء تعبئة الحقول كاملة", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isLoading = true
+                    auth.signInWithEmailAndPassword(email, password)
+                        .addOnSuccessListener { isLoading = false; onLoginSuccess() }
+                        .addOnFailureListener { e -> isLoading = false; Toast.makeText(context, "خطأ: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
+                },
+                enabled = !isLoading, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LudexAccent)
+            ) {
+                Text(if (isLoading) "جاري التحقق..." else "تسجيل الدخول", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(onClick = onNavigateToRegister) { Text("ليس لديك حساب؟ أنشئ حساباً جديداً الآن", color = LudexAccent) }
+        }
+    }
+}
+
+@Composable
+fun RegisterScreen(onRegisterSuccess: () -> Unit, onNavigateToLogin: () -> Unit) {
+    var fullName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
+
+    Box(modifier = Modifier.fillMaxSize().background(LudexBackground).padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text("إنشاء حساب جديد", color = LudexTextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(30.dp))
+
+            OutlinedTextField(value = fullName, onValueChange = { fullName = it }, label = { Text("الاسم الكامل") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary))
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("اسم المستخدم") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary))
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("البريد الإلكتروني") }, modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary))
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("كلمة المرور") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = LudexTextSecondary, focusedTextColor = LudexTextPrimary))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = {
+                    if (fullName.isBlank() || username.isBlank() || email.isBlank() || password.isBlank()) return@Button
+                    isLoading = true
+                    auth.createUserWithEmailAndPassword(email, password).addOnSuccessListener { res ->
+                        val userMap = hashMapOf("uid" to res.user!!.uid, "fullName" to fullName, "username" to username.trim().lowercase(), "email" to email, "createdAt" to Timestamp.now())
+                        db.collection("Users").document(res.user!!.uid).set(userMap).addOnSuccessListener { isLoading = false; onRegisterSuccess() }
+                    }
+                },
+                enabled = !isLoading, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LudexAccent)
+            ) {
+                Text(if (isLoading) "جاري إنشاء الحساب..." else "إنشاء الحساب وبدء الرحلة 🎮", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(onClick = onNavigateToLogin) { Text("لديك حساب بالفعل؟ سجل دخولك", color = LudexAccent) }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen() {
+    var currentScreen by remember { mutableStateOf("home") }
+    var selectedGameId by remember { mutableStateOf<Int?>(null) }
+
+    Scaffold(
+        bottomBar = {
+            if (selectedGameId == null) {
+                NavigationBar(containerColor = Color(0xFF151515), tonalElevation = 8.dp) {
+                    NavigationBarItem(selected = currentScreen == "home", onClick = { currentScreen = "home" }, icon = { Icon(Icons.Default.Home, "") }, label = { Text("الرئيسية") }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Black, selectedTextColor = LudexAccent, indicatorColor = LudexAccent, unselectedIconColor = LudexTextSecondary, unselectedTextColor = LudexTextSecondary))
+                    NavigationBarItem(selected = currentScreen == "search", onClick = { currentScreen = "search" }, icon = { Icon(Icons.Default.Search, "") }, label = { Text("البحث") }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Black, selectedTextColor = LudexAccent, indicatorColor = LudexAccent, unselectedIconColor = LudexTextSecondary, unselectedTextColor = LudexTextSecondary))
+                    NavigationBarItem(selected = currentScreen == "profile", onClick = { currentScreen = "profile" }, icon = { Icon(Icons.Default.Person, "") }, label = { Text("الملف الشخصي") }, colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.Black, selectedTextColor = LudexAccent, indicatorColor = LudexAccent, unselectedIconColor = LudexTextSecondary, unselectedTextColor = LudexTextSecondary))
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().background(LudexBackground).padding(innerPadding)) {
+            if (selectedGameId != null) {
+                GameDetailScreen(gameId = selectedGameId!!, onBack = { selectedGameId = null })
+            } else {
+                when (currentScreen) {
+                    "home" -> MainDashboard(onGameClick = { game -> selectedGameId = game.id })
+                    "search" -> SearchDashboard()
+                    "profile" -> ProfileDashboard()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MainDashboard(onGameClick: (GameModel) -> Unit) {
+    val gamesList = remember { mutableStateListOf<GameModel>() }
+    var currentPage by remember { mutableStateOf(1) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isEndReached by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val fetchNextPage: (Boolean) -> Unit = { refresh ->
+        if (!isLoading) {
+            isLoading = true
+            errorMessage = null
+            if (refresh) { currentPage = 1; isEndReached = false }
+            coroutineScope.launch {
+                try {
+                    val response = RetrofitInstance.api.getPopularGames(apiKey = RAWG_API_KEY, page = currentPage)
+                    if (refresh) gamesList.clear()
+                    if (response.results.isNotEmpty()) {
+                        gamesList.addAll(response.results)
+                        currentPage++
+                    } else { isEndReached = true }
+                } catch (e: Exception) { errorMessage = "مشكلة في الاتصال بالشبكة" }
+                finally { isLoading = false; isRefreshing = false; dragOffset = 0f }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { if (gamesList.isEmpty()) fetchNextPage(false) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0 && !isRefreshing) {
+                    if (dragOffset < 300f) { dragOffset += available.y; return Offset(0f, available.y) }
+                }
+                if (available.y < 0 && dragOffset > 0f && !isRefreshing) {
+                    dragOffset = (dragOffset + available.y).coerceAtLeast(0f)
+                    return Offset(0f, available.y)
+                }
+                return Offset.Zero
+            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (dragOffset > 150f && !isRefreshing) { isRefreshing = true; fetchNextPage(true) }
+                else if (!isRefreshing) { dragOffset = 0f }
+                return super.onPostScroll(consumed, available, source)
+            }
+        }
+    }
+
+    val animatedOffset by animateDpAsState(targetValue = if (dragOffset > 0) (dragOffset / 3).coerceAtMost(80f).dp else 0.dp)
+
+    Box(modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection)) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
+                Image(painter = painterResource(id = R.drawable.ludex_logo), contentDescription = "Ludex Logo", modifier = Modifier.height(38.dp).wrapContentWidth(), contentScale = ContentScale.Fit)
+            }
+
+            if (gamesList.isEmpty() && isLoading && !isRefreshing) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LudexAccent) }
+            } else if (errorMessage != null && gamesList.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(errorMessage!!, color = Color.Red, fontSize = 16.sp) }
+            } else {
+                LazyVerticalGrid(columns = GridCells.Fixed(2), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxSize()) {
+                    itemsIndexed(gamesList) { index, game ->
+                        if (index >= gamesList.size - 2 && !isLoading && !isEndReached) {
+                            LaunchedEffect(Unit) { fetchNextPage(false) }
+                        }
+                        Column(modifier = Modifier.fillMaxWidth().clickable { onGameClick(game) }) {
+                            // 
+                            AsyncImage(
+                                model = game.background_image, contentDescription = game.name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.72f) //
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(LudexCardBg),
+                                contentScale = ContentScale.Crop // 
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(text = game.name, color = LudexTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(text = "⭐ ${game.rating}", color = LudexAccent, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                    if (isLoading && !isRefreshing && gamesList.isNotEmpty()) {
+                        item { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LudexAccent, modifier = Modifier.size(24.dp), strokeWidth = 2.dp) } }
+                    }
+                }
+            }
+        }
+        if (dragOffset > 20f || isRefreshing) {
+            Card(modifier = Modifier.align(Alignment.TopCenter).offset(y = animatedOffset).size(40.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF151515)), elevation = CardDefaults.cardElevation(4.dp)) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LudexAccent, modifier = Modifier.size(20.dp), strokeWidth = 2.5.dp) }
+            }
+        }
+    }
+}
+
+data class UserReview(
+    val id: String = "", val gameId: Int = 0, val uid: String = "",
+    val username: String = "لاعب لودكس المتميز", val rating: Int = 0,
+    val comment: String = "", val timestamp: Timestamp = Timestamp.now()
+)
+
+// ========================================================
+// 
+// ========================================================
+@Composable
+fun GameDetailScreen(gameId: Int, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
+
+    var gameDetails by remember { mutableStateOf<GameDetailModel?>(null) }
+    var screenshots by remember { mutableStateOf<List<String>>(emptyList()) }
+    var trailerUrl by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var hasError by remember { mutableStateOf(false) }
+    var showRateDialog by remember { mutableStateOf(false) }
+    val reviewsList = remember { mutableStateListOf<UserReview>() }
+
+    var currentBannerIndex by remember { mutableStateOf(0) }
+
+    val fetchReviews: () -> Unit = {
+        db.collection("Reviews").whereEqualTo("gameId", gameId)
+            .orderBy("timestamp", FirestoreQuery.Direction.DESCENDING).get()
+            .addOnSuccessListener { snapshot ->
+                reviewsList.clear()
+                for (doc in snapshot.documents) {
+                    val review = doc.toObject(UserReview::class.java)?.copy(id = doc.id)
+                    if (review != null) reviewsList.add(review)
+                }
+            }
+    }
+
+    LaunchedEffect(gameId) {
+        coroutineScope.launch {
+            try {
+                val response = RetrofitInstance.api.getGameDetails(gameId = gameId, apiKey = RAWG_API_KEY)
+                gameDetails = response
+
+                val screenshotResponse = RetrofitInstance.api.getGameScreenshots(gameId = gameId, apiKey = RAWG_API_KEY)
+                screenshots = screenshotResponse.results.mapNotNull { it.image }
+
+                val moviesResponse = RetrofitInstance.api.getGameTrailers(gameId = gameId, apiKey = RAWG_API_KEY)
+                if (moviesResponse.results.isNotEmpty()) trailerUrl = moviesResponse.results.first().data?.max
+
+                fetchReviews()
+                isLoading = false
+            } catch (e: Exception) { hasError = true; isLoading = false }
+        }
+    }
+
+    // 
+    if (screenshots.isNotEmpty()) {
+        LaunchedEffect(screenshots) {
+            while (true) {
+                delay(3500)
+                currentBannerIndex = (currentBannerIndex + 1) % screenshots.size
+            }
+        }
+    }
+
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize().background(LudexBackground), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LudexAccent) }
+    } else if (hasError || gameDetails == null) {
+        Box(modifier = Modifier.fillMaxSize().background(LudexBackground), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("فشل في تحميل تفاصيل اللعبة", color = Color.Red, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = LudexAccent)) { Text("رجوع للرئيسية", color = Color.Black) }
+            }
+        }
+    } else {
+        val details = gameDetails!!
+        val bannerImages = if (screenshots.isNotEmpty()) screenshots else listOf(details.background_image ?: "")
+
+        Box(modifier = Modifier.fillMaxSize().background(LudexBackground)) {
+
+            // 
+            Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                Crossfade(targetState = currentBannerIndex, animationSpec = tween(durationMillis = 1000), label = "BannerTransition") { index ->
+                    AsyncImage(
+                        model = bannerImages[index], contentDescription = "Dynamic Banner",
+                        modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                    )
+                }
+                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, LudexBackground.copy(alpha = 0.4f), LudexBackground), startY = 150f)))
+            }
+
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState)) {
+                Spacer(modifier = Modifier.height(190.dp))
+
+                // 
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.Bottom) {
+
+                    // 
+                    AsyncImage(
+                        model = details.background_image,
+                        contentDescription = details.name,
+                        modifier = Modifier
+                            .width(110.dp)
+                            .aspectRatio(0.72f) // 
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(LudexCardBg),
+                        contentScale = ContentScale.Crop // احتواء ذكي
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+
+                        // 
+                        Text(
+                            text = details.name.uppercase(),
+                            color = LudexAccent,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.5.sp,
+                            lineHeight = 26.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.background(LudexAccent.copy(alpha = 0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                Text(text = "RAWG ⭐ ${details.rating}", color = LudexAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (details.metacritic != null) {
+                                Box(modifier = Modifier.background(Color(0xFF66CC33).copy(alpha = 0.2f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                    Text(text = "Metascore: ${details.metacritic}", color = Color(0xFF66CC33), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                //
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            if (!trailerUrl.isNullOrBlank()) {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerUrl)))
+                            } else {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=${Uri.encode(details.name + " official trailer")}")))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = LudexCardBg), shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = LudexAccent)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = if (!trailerUrl.isNullOrBlank()) " " else "ابحث عن التريلر على YouTube 🎬", color = LudexTextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(onClick = { showRateDialog = true }, modifier = Modifier.fillMaxWidth().height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = LudexAccent), shape = RoundedCornerShape(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = Color.Black)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Rate the game", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(text = "لمحة عن اللعبة وقصتها", color = LudexTextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = details.description_raw ?: "لا يوجد وصف متوفر لهذه اللعبة حالياً.", color = LudexTextSecondary, fontSize = 14.sp, lineHeight = 22.sp)
+
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Text(text = "المراجعات والتقييمات (${reviewsList.size})", color = LudexTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (reviewsList.isEmpty()) {
+                        Text(text = "لا توجد مراجعات بعد. كن أول من يكتب انطباعه عن اللعبة!", color = LudexTextSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    } else {
+                        reviewsList.forEach { review ->
+                            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = LudexCardBg), shape = RoundedCornerShape(8.dp)) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = LudexAccent, modifier = Modifier.size(32.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(text = "@${review.username}", color = LudexTextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Row { repeat(review.rating) { Icon(Icons.Default.Star, contentDescription = null, tint = LudexAccent, modifier = Modifier.size(14.dp)) } }
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(text = review.comment, color = LudexTextPrimary, fontSize = 13.sp, lineHeight = 18.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            IconButton(onClick = onBack, modifier = Modifier.padding(top = 16.dp, start = 16.dp).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(20.dp)).size(40.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+        }
+    }
+
+    if (showRateDialog) {
+        var selectedRating by remember { mutableStateOf(0) }
+        var commentText by remember { mutableStateOf("") }
+        val maxCharacters = 1000
+        var isSubmitting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { if (!isSubmitting) showRateDialog = false },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val user = auth.currentUser ?: return@Button
+                        if (selectedRating == 0 || commentText.isBlank()) return@Button
+                        isSubmitting = true
+                        db.collection("Users").document(user.uid).get().addOnSuccessListener { userDoc ->
+                            val username = userDoc.getString("username") ?: "لاعب لودكس الشكلي"
+                            val reviewData = hashMapOf("gameId" to gameId, "uid" to user.uid, "username" to username, "rating" to selectedRating, "comment" to commentText.trim(), "timestamp" to Timestamp.now())
+                            db.collection("Reviews").add(reviewData).addOnSuccessListener {
+                                isSubmitting = false; showRateDialog = false; fetchReviews()
+                            }
+                        }
+                    },
+                    enabled = !isSubmitting, colors = ButtonDefaults.buttonColors(containerColor = LudexAccent)
+                ) { Text(if (isSubmitting) "جاري النشر..." else "نشر المراجعة", color = Color.Black, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { showRateDialog = false }, enabled = !isSubmitting) { Text("إلغاء", color = Color.White) } },
+            title = { Text(text = "قيم تجربتك للعبة", color = LudexTextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                        for (i in 1..5) {
+                            Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = if (i <= selectedRating) LudexAccent else Color(0xFF444444), modifier = Modifier.size(36.dp).clickable { selectedRating = i }.padding(horizontal = 2.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = commentText, onValueChange = { if (it.length <= maxCharacters) commentText = it },
+                        placeholder = { Text("Describe what you feel about this game...", color = LudexTextSecondary, fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth().height(140.dp).background(Color(0xFF101010), shape = RoundedCornerShape(4.dp)), maxLines = 6,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LudexAccent, unfocusedBorderColor = Color(0xFF333333), focusedTextColor = LudexTextPrimary, unfocusedTextColor = LudexTextPrimary)
+                    )
+                    Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.CenterEnd) {
+                        Text(text = "${commentText.length}/$maxCharacters", color = if (commentText.length == maxCharacters) Color.Red else LudexTextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun SearchDashboard() { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("قريباً: ابحث عن لعبتك المفضلة 🔍", color = LudexTextPrimary, fontSize = 18.sp) } }
+@Composable
+fun ProfileDashboard() { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("قريباً: ملفك الشخصي ورمزياتك 👤", color = LudexTextPrimary, fontSize = 18.sp) } }
+
+// ========================================================
+// 
+// ========================================================
+data class RawgResponse(val results: List<GameModel>)
+data class GameModel(val id: Int, val name: String, val background_image: String?, val rating: Double)
+
+data class GameDetailModel(
+    val id: Int, val name: String, val description_raw: String?,
+    val background_image: String?, val background_image_additional: String?,
+    val rating: Double, val metacritic: Int?
+)
+
+data class ScreenshotResponse(val results: List<ScreenshotModel>)
+data class ScreenshotModel(val id: Int, val image: String?)
+
+data class TrailerResponse(val results: List<TrailerModel>)
+data class TrailerModel(val id: Int, val name: String, val data: TrailerData?)
+data class TrailerData(val max: String?)
+
+interface RawgApiService {
+    @GET("games")
+    suspend fun getPopularGames(@Query("key") apiKey: String, @Query("page") page: Int, @Query("page_size") pageSize: Int = 12, @Query("ordering") ordering: String = "-added"): RawgResponse
+
+    @GET("games/{id}")
+    suspend fun getGameDetails(@Path("id") gameId: Int, @Query("key") apiKey: String): GameDetailModel
+
+    @GET("games/{id}/screenshots")
+    suspend fun getGameScreenshots(@Path("id") gameId: Int, @Query("key") apiKey: String): ScreenshotResponse
+
+    @GET("games/{id}/movies")
+    suspend fun getGameTrailers(@Path("id") gameId: Int, @Query("key") apiKey: String): TrailerResponse
+}
+
+object RetrofitInstance {
+    private const val BASE_URL = "https://api.rawg.io/api/"
+    val api: RawgApiService by lazy {
+        Retrofit.Builder().baseUrl(BASE_URL).addConverterFactory(GsonConverterFactory.create()).build().create(RawgApiService::class.java)
+    }
+}
