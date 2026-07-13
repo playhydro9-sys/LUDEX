@@ -65,7 +65,7 @@ import com.example.ludex.R
 // ========================================================
 // Settings & Colors
 // ========================================================
-const val RAWG_API_KEY = "8cc76da4260246eaba79f191bf5b2e64"
+const val RAWG_API_KEY = "No api key"
 
 val LudexBackground = Color(0xFF0D0D0D)
 val LudexAccent = Color(0xFF1DBF8E)
